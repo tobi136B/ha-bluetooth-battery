@@ -12,6 +12,7 @@ from .app import BatteryService
 from .bluez import BlueZ, HfpAgProfile, PairingAgent
 from .config import load_config
 from .mqtt_publisher import MqttPublisher
+from .store import DEFAULT_STORE_PATH, DeviceStore
 
 LOG = logging.getLogger("bt_battery")
 RESTART_DELAY_SECONDS = 60
@@ -20,14 +21,21 @@ RESTART_DELAY_SECONDS = 60
 async def main_async() -> None:
     config = load_config()
     logging.getLogger().setLevel(config.log_level)
-    LOG.info("Bluetooth Akku %s startet, Adapter %s, %d Geräte", __version__, config.adapter, len(config.devices))
+    LOG.info("Bluetooth Akku %s startet, Adapter %s, %d Geräte aus den Optionen", __version__, config.adapter, len(config.devices))
 
-    publisher = MqttPublisher(config.mqtt)
-    publisher.connect()
+    loop = asyncio.get_running_loop()
+    service: BatteryService | None = None
 
+    def on_command(topic: str, payload: str) -> None:
+        # Aufruf aus dem MQTT Thread, Verarbeitung in der Ereignisschleife
+        if service is not None:
+            loop.call_soon_threadsafe(service.handle_command, topic, payload)
+
+    publisher = MqttPublisher(config.mqtt, on_command)
     bluez = BlueZ(config.adapter)
     await bluez.connect()
-    service = BatteryService(config, bluez, publisher)
+    service = BatteryService(config, bluez, publisher, DeviceStore(DEFAULT_STORE_PATH))
+    publisher.connect()
     await bluez.register_agent(PairingAgent())
     service.hfp_available = await bluez.register_hfp_profile(
         HfpAgProfile(service.on_new_connection, service.on_disconnect_request)

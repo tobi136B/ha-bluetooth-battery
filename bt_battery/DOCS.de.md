@@ -37,13 +37,27 @@ Ohne Dongle geht auch `hci0`, dann teilen sich Add-on und HA Bluetooth den Adapt
 
 ## Einrichtung
 
-1. Geräte finden, dafür gibt es drei Wege:
-   * **Automatische Suche:** Geräte einschalten (neue in den Kopplungsmodus) und das Add-on starten.
-     Es sucht beim Start und listet alle Geräte in der Nähe mit MAC Adresse, Typ und Akku Methode
-     im Protokoll und im Sensor **"Found devices"** (Attribut `devices`).
+### Empfohlen: Geräte in Home Assistant auswählen
+
+1. Geräte einschalten, Kopfhörer in den Kopplungsmodus und das Add-on starten (oder beim Gerät
+   "Bluetooth Battery" den Knopf **"Search devices"** drücken).
+2. Unter Einstellungen > Geräte & Dienste > MQTT erscheint jeder gefundene Kopfhörer, Lautsprecher
+   oder jedes Eingabegerät als eigenes Gerät. Öffnen und **"Monitor battery"** einschalten.
+3. Das Add-on koppelt das Gerät bei Bedarf und fragt es sofort ab. Am selben Gerät erscheint der
+   Sensor **"Battery"**.
+
+Gefundene Geräte und die Auswahl werden in `/data/devices.json` gespeichert und bleiben nach einem
+Neustart erhalten. Ausschalten von "Monitor battery" entfernt den Akku Sensor wieder. Der Sensor
+**"Found devices"** (Attribut `devices`) zeigt das Ergebnis der letzten Suche mit MAC Adresse, Typ
+und Akku Methode.
+
+### Alternative: Optionen
+
+1. MAC Adressen finden:
+   * **Automatische Suche:** Das Protokoll listet nach der Suche alle Geräte in der Nähe mit MAC Adresse.
    * **Bereits gekoppelte Geräte:** `monitor_all_paired: true` setzen, dann wird jedes am Adapter gekoppelte Gerät ohne MAC Eingabe überwacht.
    * **Windows PC:** `python tools/find_bluetooth_devices.py` aus diesem Repository ausführen. Es listet alle mit Windows gekoppelten Geräte mit MAC Adresse und Akkustand und gibt einen fertigen Block für die Optionen aus.
-2. Optionen ausfüllen:
+2. Optionen ausfüllen (in der Add-on Konfiguration, Menü "Als YAML bearbeiten"):
 
    ```yaml
    adapter: hci1

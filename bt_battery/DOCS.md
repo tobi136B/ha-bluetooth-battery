@@ -37,13 +37,26 @@ Without a dongle `hci0` works too; the add-on and HA Bluetooth then share the ad
 
 ## Setup
 
-1. Find your devices, there are three ways:
-   * **Automatic scan:** switch the devices on (put new ones into pairing mode) and start the add-on.
-     It scans on start and lists every nearby device with MAC address, type and battery method
-     in the log and in the sensor **"Found devices"** (attribute `devices`).
+### Recommended: choose devices in Home Assistant
+
+1. Switch the devices on, put headphones into pairing mode, and start the add-on (or press the
+   **"Search devices"** button on the device "Bluetooth Battery").
+2. Under Settings > Devices & services > MQTT, every found headset, speaker or input device
+   now appears as its own device. Open it and switch on **"Monitor battery"**.
+3. The add-on pairs the device if needed and queries it right away. The **"Battery"** sensor
+   appears on the same device.
+
+Found devices and your selection are stored in `/data/devices.json` and stay after a restart.
+Switching "Monitor battery" off removes the battery sensor again. The sensor **"Found devices"**
+(attribute `devices`) lists the result of the last scan with MAC address, type and battery method.
+
+### Alternative: options
+
+1. Find the MAC addresses:
+   * **Automatic scan:** the log lists every nearby device with MAC address after the scan.
    * **Already paired devices:** set `monitor_all_paired: true`, then every device paired with the adapter is monitored without entering a MAC.
    * **Windows PC:** run `python tools/find_bluetooth_devices.py` from this repository. It lists all devices paired with Windows, with MAC address and battery level, and prints a ready block for the options.
-2. Fill in the options:
+2. Fill in the options (in the add-on configuration, menu "Edit in YAML"):
 
    ```yaml
    adapter: hci1
