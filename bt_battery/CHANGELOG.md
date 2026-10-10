@@ -2,8 +2,8 @@
 
 ## 0.2.2
 
-* Device scan hides unnamed devices (usually phones, watches or trackers nearby with rotating addresses), they appear only with `log_level: debug`
-* Gerätesuche blendet Geräte ohne Namen aus (meist fremde Handys, Uhren oder Tracker mit wechselnder Adresse), sichtbar nur mit `log_level: debug`
+* Device scan hides unnamed devices with random addresses (usually phones, watches or trackers nearby), they appear only with `log_level: debug`. Devices with a fixed address stay visible even without a name
+* Gerätesuche blendet namenlose Geräte mit Zufallsadresse aus (meist fremde Handys, Uhren oder Tracker), sichtbar nur mit `log_level: debug`. Geräte mit fester Adresse bleiben auch ohne Namen sichtbar
 
 ## 0.2.1
 

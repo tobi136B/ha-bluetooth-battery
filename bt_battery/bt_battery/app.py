@@ -213,6 +213,7 @@ class BatteryService:
             "paired": bool(state.get("Paired")),
             "rssi": state.get("RSSI"),
             "battery_method": method,
+            "random_address": state.get("AddressType") == "random",
         }
 
     async def scan_and_report(self) -> None:
@@ -221,13 +222,17 @@ class BatteryService:
         found = [self.describe(state) for state in await self.bluez.devices()]
         # Gekoppelte und gerade gesehene Geräte zeigen, nach Signalstärke sortiert
         found = [entry for entry in found if entry["paired"] or entry["rssi"] is not None]
-        # Geräte ohne Namen sind fast immer fremde Handys, Uhren oder Tracker mit wechselnder Adresse
-        unnamed = [entry for entry in found if not entry["name"] and not entry["paired"]]
-        found = [entry for entry in found if entry["name"] or entry["paired"]]
+        # Namenlose Geräte mit Zufallsadresse sind fast immer fremde Handys, Uhren oder Tracker.
+        # Geräte mit fester Adresse (z.B. Kopfhörer) bleiben auch ohne Namen sichtbar.
+        def is_noise(entry: dict) -> bool:
+            return not entry["name"] and not entry["paired"] and entry["random_address"]
+
+        unnamed = [entry for entry in found if is_noise(entry)]
+        found = [entry for entry in found if not is_noise(entry)]
         found.sort(key=lambda entry: entry["rssi"] if entry["rssi"] is not None else -999, reverse=True)
         for entry in unnamed:
             LOG.debug("  ohne Namen: %s", entry["mac"])
-        LOG.info("%d Geräte gefunden, %d Geräte ohne Namen ausgeblendet:", len(found), len(unnamed))
+        LOG.info("%d Geräte gefunden, %d namenlose Geräte mit Zufallsadresse ausgeblendet:", len(found), len(unnamed))
         for entry in found:
             LOG.info(
                 "  %s  %-30s %-16s gekoppelt=%s akku=%s",
