@@ -207,11 +207,13 @@ class BatteryService:
             method = "unknown"
         return {
             "mac": state.get("Address", ""),
-            "name": state.get("Alias") or state.get("Name") or "",
+            # "Name" fehlt, wenn das Gerät keinen Namen sendet; "Alias" ist dann nur die Adresse
+            "name": state.get("Name") or (state.get("Alias") if state.get("Paired") else "") or "",
             "type": state.get("Icon", ""),
             "paired": bool(state.get("Paired")),
             "rssi": state.get("RSSI"),
             "battery_method": method,
+            "random_address": state.get("AddressType") == "random",
         }
 
     async def scan_and_report(self) -> None:
@@ -220,13 +222,24 @@ class BatteryService:
         found = [self.describe(state) for state in await self.bluez.devices()]
         # Gekoppelte und gerade gesehene Geräte zeigen, nach Signalstärke sortiert
         found = [entry for entry in found if entry["paired"] or entry["rssi"] is not None]
+        # Namenlose Geräte mit Zufallsadresse sind fast immer fremde Handys, Uhren oder Tracker.
+        # Geräte mit fester Adresse (z.B. Kopfhörer) bleiben auch ohne Namen sichtbar.
+        def is_noise(entry: dict) -> bool:
+            return not entry["name"] and not entry["paired"] and entry["random_address"]
+
+        unnamed = [entry for entry in found if is_noise(entry)]
+        found = [entry for entry in found if not is_noise(entry)]
         found.sort(key=lambda entry: entry["rssi"] if entry["rssi"] is not None else -999, reverse=True)
-        LOG.info("%d Geräte gefunden:", len(found))
+        for entry in unnamed:
+            LOG.debug("  ohne Namen: %s", entry["mac"])
+        LOG.info("%d Geräte gefunden, %d namenlose Geräte mit Zufallsadresse ausgeblendet:", len(found), len(unnamed))
         for entry in found:
             LOG.info(
                 "  %s  %-30s %-16s gekoppelt=%s akku=%s",
                 entry["mac"], entry["name"][:30], entry["type"], "ja" if entry["paired"] else "nein", entry["battery_method"],
             )
+        if not found:
+            LOG.info("Keine benannten Geräte gefunden. Kopfhörer erscheinen nur im Kopplungsmodus, dann das Add-on neu starten.")
         LOG.info("Gewünschte Geräte mit MAC unter 'devices' eintragen (oder monitor_all_paired aktivieren)")
         self.publisher.publish_scan_result(found)
 
