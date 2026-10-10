@@ -212,13 +212,19 @@ class BlueZ:
                     result.append(state)
         return result
 
-    async def scan(self, seconds: int) -> None:
-        """Sucht Classic und BLE Geräte in der Umgebung."""
+    async def scan(self, seconds: int) -> list[dict[str, Any]]:
+        """
+        Sucht Classic und BLE Geräte in der Umgebung und liefert den Stand vor dem Ende der Suche.
+
+        BlueZ löscht beim Beenden der Suche die RSSI Werte aller gefundenen Geräte
+        (discovery_cleanup in src/adapter.c). Deshalb wird die Liste vorher gelesen.
+        """
         adapter = await self._interface(self.adapter_path, "org.bluez.Adapter1")
         await adapter.call_set_discovery_filter({"Transport": Variant("s", "auto")})
         await adapter.call_start_discovery()
         try:
             await asyncio.sleep(seconds)
+            return await self.devices()
         finally:
             try:
                 await adapter.call_stop_discovery()

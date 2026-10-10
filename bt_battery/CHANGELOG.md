@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3
+
+* Fix: the device scan read the device list after stopping discovery, when BlueZ had already cleared the signal strength, so found devices could disappear from the result
+* Fix: Die Gerätesuche las die Liste erst nach dem Ende der Suche, wenn BlueZ die Signalstärke schon gelöscht hatte. Gefundene Geräte konnten dadurch fehlen
+
 ## 0.2.2
 
 * Device scan hides unnamed devices with random addresses (usually phones, watches or trackers nearby), they appear only with `log_level: debug`. Devices with a fixed address stay visible even without a name

@@ -118,6 +118,7 @@ class Adapter(ServiceInterface):
     @method(name="StopDiscovery")
     def stop_discovery(self):
         self.discovering = False
+        self.stopped_once = True
 
     @dbus_property(name="Powered")
     def powered(self) -> "b":
@@ -378,7 +379,8 @@ def test_scan_and_monitor_all_paired(private_bus) -> None:
     async def scenario() -> None:
         fake_bus = await MessageBus(bus_type=BusType.SYSTEM, negotiate_unix_fd=True).connect()
         state = FakeBluez(fake_bus)
-        fake_bus.export("/org/bluez/hci0", Adapter())
+        adapter = Adapter()
+        fake_bus.export("/org/bluez/hci0", adapter)
         fake_bus.export(DEVICE_PATH, Device(state))
         fake_bus.export(BLE_PATH, BleDevice(fake_bus))
         fake_bus.export("/org/bluez/hci0/dev_41_C6_91_5F_D2_37", UnnamedNeighbour())
@@ -395,7 +397,19 @@ def test_scan_and_monitor_all_paired(private_bus) -> None:
         await bluez.connect()
         service = BatteryService(config, bluez, publisher)
 
+        # Die Geräteliste muss gelesen werden, solange die Suche noch läuft (BlueZ löscht danach RSSI)
+        read_while_discovering = []
+        original_devices = bluez.devices
+
+        async def recording_devices():
+            read_while_discovering.append(adapter.discovering)
+            return await original_devices()
+
+        bluez.devices = recording_devices
         await service.scan_and_report()
+        bluez.devices = original_devices
+        assert read_while_discovering == [True]
+        assert adapter.discovering is False
         macs = {entry["mac"] for entry in publisher.scan}
         assert "41:C6:91:5F:D2:37" not in macs
         assert "AC:80:0A:12:34:56" in macs
