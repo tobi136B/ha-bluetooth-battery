@@ -3,8 +3,8 @@ configuration:
     name: Bluetooth Adapter
     description: z.B. hci0 (eingebaut) oder hci1 (USB Dongle). Siehe Einstellungen > System > Hardware.
   devices:
-    name: Geräte
-    description: Liste der Bluetooth Geräte mit MAC Adresse und Anzeigename.
+    name: Geräte (optional)
+    description: Normalerweise leer lassen. Geräte stattdessen in Home Assistant mit dem Schalter "Monitor battery" auswählen. Hier eingetragene Geräte werden immer überwacht.
   poll_interval_minutes:
     name: Abfrageintervall (Minuten)
     description: Wie oft nicht verbundene Geräte kurz angefragt werden.
