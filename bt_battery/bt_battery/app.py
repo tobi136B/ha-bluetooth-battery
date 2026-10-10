@@ -218,8 +218,7 @@ class BatteryService:
 
     async def scan_and_report(self) -> None:
         LOG.info("Suche %d s nach Bluetooth Geräten (Geräte einschalten, ggf. Kopplungsmodus)", self.config.scan_seconds)
-        await self.bluez.scan(self.config.scan_seconds)
-        found = [self.describe(state) for state in await self.bluez.devices()]
+        found = [self.describe(state) for state in await self.bluez.scan(self.config.scan_seconds)]
         # Gekoppelte und gerade gesehene Geräte zeigen, nach Signalstärke sortiert
         found = [entry for entry in found if entry["paired"] or entry["rssi"] is not None]
         # Namenlose Geräte mit Zufallsadresse sind fast immer fremde Handys, Uhren oder Tracker.

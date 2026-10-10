@@ -1,5 +1,5 @@
 name: Bluetooth Battery
-version: "0.2.2"
+version: "0.2.3"
 slug: bt_battery
 description: Read the battery level of Bluetooth devices (headphones, headsets, BLE) directly on HA OS
 url: https://github.com/tobi136B/ha-bluetooth-battery
