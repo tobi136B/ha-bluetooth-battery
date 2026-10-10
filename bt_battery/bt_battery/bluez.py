@@ -117,23 +117,52 @@ class BlueZ:
         introspection = await self.bus.introspect(BLUEZ, path)
         return self.bus.get_proxy_object(BLUEZ, path, introspection).get_interface(interface)
 
-    async def register(self, profile: HfpAgProfile, agent: PairingAgent) -> None:
-        self.bus.export(PROFILE_PATH, profile)
+    async def register_agent(self, agent: PairingAgent) -> None:
         self.bus.export(AGENT_PATH, agent)
-
-        profile_manager = await self._interface("/org/bluez", "org.bluez.ProfileManager1")
-        await profile_manager.call_register_profile(
-            PROFILE_PATH,
-            HFP_AG_UUID,
-            {
-                "Name": Variant("s", "Bluetooth Akku (HFP AG)"),
-                "Version": Variant("q", 0x0107),
-                "AutoConnect": Variant("b", True),
-            },
-        )
         agent_manager = await self._interface("/org/bluez", "org.bluez.AgentManager1")
-        await agent_manager.call_register_agent(AGENT_PATH, "NoInputNoOutput")
-        LOG.info("HFP Profil und Kopplungsagent bei BlueZ registriert")
+        try:
+            await agent_manager.call_register_agent(AGENT_PATH, "NoInputNoOutput")
+            LOG.info("Kopplungsagent bei BlueZ registriert")
+        except DBusError as error:
+            LOG.warning("Kopplungsagent nicht registriert (%s), Kopplung evtl. nicht möglich", error)
+
+    async def register_hfp_profile(self, profile: HfpAgProfile) -> bool:
+        """
+        Registriert den eigenen HFP Steuerkanal. Liefert False, wenn ein anderer
+        Dienst auf dem Host (z.B. ein Audio Server) die HFP Gateway Rolle schon belegt.
+        """
+        self.bus.export(PROFILE_PATH, profile)
+        profile_manager = await self._interface("/org/bluez", "org.bluez.ProfileManager1")
+        try:
+            await profile_manager.call_register_profile(
+                PROFILE_PATH,
+                HFP_AG_UUID,
+                {
+                    "Name": Variant("s", "Bluetooth Battery (HFP AG)"),
+                    "Version": Variant("q", 0x0107),
+                    "AutoConnect": Variant("b", True),
+                },
+            )
+        except DBusError as error:
+            self.bus.unexport(PROFILE_PATH)
+            LOG.warning("Eigener HFP Steuerkanal nicht möglich: %s", error)
+            return False
+        LOG.info("HFP Steuerkanal bei BlueZ registriert")
+        return True
+
+    async def bus_names(self) -> list[str]:
+        """Bekannte Dienstnamen auf dem System D-Bus (zur Fehlersuche)."""
+        reply = await self.bus.call(
+            Message(
+                destination="org.freedesktop.DBus",
+                path="/org/freedesktop/DBus",
+                interface="org.freedesktop.DBus",
+                member="ListNames",
+            )
+        )
+        if reply.message_type == MessageType.ERROR:
+            return []
+        return sorted(name for name in reply.body[0] if not name.startswith(":"))
 
     async def power_on(self) -> None:
         adapter = await self._interface(self.adapter_path, "org.bluez.Adapter1")

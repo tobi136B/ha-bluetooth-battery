@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1
+
+* No crash loop when another service on the host already holds the HFP gateway role ("UUID already registered"): headsets fall back to the battery level BlueZ reports (`org.bluez.Battery1`), the log lists the D-Bus services for diagnosis
+* Fatal errors wait 60 s before restarting
+* Kein Absturz mehr, wenn ein anderer Dienst auf dem Host die HFP Gateway Rolle belegt ("UUID already registered"): Kopfhörer werden dann über den Akkustand von BlueZ (`org.bluez.Battery1`) abgefragt, das Protokoll listet die D-Bus Dienste zur Fehlersuche
+* Bei schweren Fehlern 60 s Pause vor dem Neustart
+
 ## 0.2.0
 
 * Device scan on start, results in the log and in the "Found devices" sensor

@@ -76,3 +76,4 @@ Without a dongle `hci0` works too; the add-on and HA Bluetooth then share the ad
 * If a device is off or all its connection slots are taken, the last value is kept.
 * Some headphones announce "Connected" when connecting. Increase the interval in that case.
 * If a device reports nothing: set `log_level: debug` and check the log.
+* If the log says "UUID already registered", another service on the host (for example an audio server) already acts as HFP gateway. The add-on then reads the battery level BlueZ reports instead; whether that works depends on the host.
