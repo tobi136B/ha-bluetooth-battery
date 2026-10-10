@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+* Option `devices` is marked optional, devices are normally chosen in Home Assistant
+* Option `devices` als optional gekennzeichnet, Geräte werden normalerweise in Home Assistant ausgewählt
+
 ## 0.3.0
 
 * Choose devices directly in Home Assistant: every found headset, speaker or input device gets its own device with a "Monitor battery" switch. Switch it on and the "Battery" sensor appears, no MAC or YAML needed
