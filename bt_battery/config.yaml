@@ -1,0 +1,31 @@
+name: Bluetooth Battery
+version: "0.1.0"
+slug: bt_battery
+description: Read the battery level of Bluetooth devices (headphones, headsets, BLE) directly on HA OS
+url: https://github.com/tobi136B/ha-bluetooth-battery
+arch:
+  - aarch64
+  - amd64
+  - armv7
+init: false
+startup: services
+# Zugriff auf BlueZ des Hostsystems über D-Bus
+host_dbus: true
+services:
+  - mqtt:need
+options:
+  adapter: hci0
+  devices: []
+  poll_interval_minutes: 15
+  hold_seconds: 20
+  disconnect_after_read: true
+  log_level: info
+schema:
+  adapter: match(^hci[0-9]+$)
+  devices:
+    - mac: match(^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$)
+      name: str
+  poll_interval_minutes: int(1,1440)
+  hold_seconds: int(5,120)
+  disconnect_after_read: bool
+  log_level: list(debug|info|warning)

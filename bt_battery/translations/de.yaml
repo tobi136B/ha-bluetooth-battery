@@ -1,0 +1,18 @@
+configuration:
+  adapter:
+    name: Bluetooth Adapter
+    description: z.B. hci0 (eingebaut) oder hci1 (USB Dongle). Siehe Einstellungen > System > Hardware.
+  devices:
+    name: Geräte
+    description: Liste der Bluetooth Geräte mit MAC Adresse und Anzeigename.
+  poll_interval_minutes:
+    name: Abfrageintervall (Minuten)
+    description: Wie oft nicht verbundene Geräte kurz angefragt werden.
+  hold_seconds:
+    name: Wartezeit auf Akkumeldung (Sekunden)
+    description: So lange bleibt die Verbindung offen, bis eine Akkumeldung kommt.
+  disconnect_after_read:
+    name: Nach dem Lesen trennen
+    description: Gibt den Verbindungsplatz am Kopfhörer wieder frei (empfohlen bei Multipoint).
+  log_level:
+    name: Protokollstufe

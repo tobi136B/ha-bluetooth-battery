@@ -1,0 +1,15 @@
+configuration:
+  adapter:
+    name: Bluetooth adapter
+    description: e.g. hci0 (built in) or hci1 (USB dongle).
+  devices:
+    name: Devices
+    description: Bluetooth devices with MAC address and display name.
+  poll_interval_minutes:
+    name: Poll interval (minutes)
+  hold_seconds:
+    name: Wait for battery report (seconds)
+  disconnect_after_read:
+    name: Disconnect after reading
+  log_level:
+    name: Log level
