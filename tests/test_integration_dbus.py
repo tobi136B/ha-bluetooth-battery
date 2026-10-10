@@ -232,6 +232,29 @@ class BleDevice(ServiceInterface):
         self.disconnect_calls += 1
 
 
+class UnnamedNeighbour(ServiceInterface):
+    """Fremdes BLE Gerät mit zufälliger Adresse und ohne Namen (z.B. ein Handy in der Nachbarschaft)."""
+
+    def __init__(self) -> None:
+        super().__init__("org.bluez.Device1")
+
+    @dbus_property(access=PropertyAccess.READ, name="Address")
+    def address(self) -> "s":
+        return "41:C6:91:5F:D2:37"
+
+    @dbus_property(access=PropertyAccess.READ, name="Alias")
+    def alias(self) -> "s":
+        return "41-C6-91-5F-D2-37"
+
+    @dbus_property(access=PropertyAccess.READ, name="Paired")
+    def paired(self) -> "b":
+        return False
+
+    @dbus_property(access=PropertyAccess.READ, name="RSSI")
+    def rssi(self) -> "n":
+        return -40
+
+
 class RecordingPublisher:
     def __init__(self) -> None:
         self.values: list[tuple[str, int, str]] = []
@@ -331,6 +354,7 @@ def test_scan_and_monitor_all_paired(private_bus) -> None:
         fake_bus.export("/org/bluez/hci0", Adapter())
         fake_bus.export(DEVICE_PATH, Device(state))
         fake_bus.export(BLE_PATH, BleDevice(fake_bus))
+        fake_bus.export("/org/bluez/hci0/dev_41_C6_91_5F_D2_37", UnnamedNeighbour())
         await fake_bus.request_name("org.bluez")
 
         config = AppConfig(
@@ -344,6 +368,8 @@ def test_scan_and_monitor_all_paired(private_bus) -> None:
         service = BatteryService(config, bluez, publisher)
 
         await service.scan_and_report()
+        assert all(entry["name"] for entry in publisher.scan)
+        assert "41:C6:91:5F:D2:37" not in {entry["mac"] for entry in publisher.scan}
         by_mac = {entry["mac"]: entry for entry in publisher.scan}
         assert by_mac[MAC]["battery_method"] == "hfp" and by_mac[MAC]["type"] == "audio-headset"
         assert by_mac[BLE_MAC]["battery_method"] == "ble_battery" and by_mac[BLE_MAC]["name"] == "MX Master"

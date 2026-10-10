@@ -207,7 +207,8 @@ class BatteryService:
             method = "unknown"
         return {
             "mac": state.get("Address", ""),
-            "name": state.get("Alias") or state.get("Name") or "",
+            # "Name" fehlt, wenn das Gerät keinen Namen sendet; "Alias" ist dann nur die Adresse
+            "name": state.get("Name") or (state.get("Alias") if state.get("Paired") else "") or "",
             "type": state.get("Icon", ""),
             "paired": bool(state.get("Paired")),
             "rssi": state.get("RSSI"),
@@ -220,13 +221,20 @@ class BatteryService:
         found = [self.describe(state) for state in await self.bluez.devices()]
         # Gekoppelte und gerade gesehene Geräte zeigen, nach Signalstärke sortiert
         found = [entry for entry in found if entry["paired"] or entry["rssi"] is not None]
+        # Geräte ohne Namen sind fast immer fremde Handys, Uhren oder Tracker mit wechselnder Adresse
+        unnamed = [entry for entry in found if not entry["name"] and not entry["paired"]]
+        found = [entry for entry in found if entry["name"] or entry["paired"]]
         found.sort(key=lambda entry: entry["rssi"] if entry["rssi"] is not None else -999, reverse=True)
-        LOG.info("%d Geräte gefunden:", len(found))
+        for entry in unnamed:
+            LOG.debug("  ohne Namen: %s", entry["mac"])
+        LOG.info("%d Geräte gefunden, %d Geräte ohne Namen ausgeblendet:", len(found), len(unnamed))
         for entry in found:
             LOG.info(
                 "  %s  %-30s %-16s gekoppelt=%s akku=%s",
                 entry["mac"], entry["name"][:30], entry["type"], "ja" if entry["paired"] else "nein", entry["battery_method"],
             )
+        if not found:
+            LOG.info("Keine benannten Geräte gefunden. Kopfhörer erscheinen nur im Kopplungsmodus, dann das Add-on neu starten.")
         LOG.info("Gewünschte Geräte mit MAC unter 'devices' eintragen (oder monitor_all_paired aktivieren)")
         self.publisher.publish_scan_result(found)
 

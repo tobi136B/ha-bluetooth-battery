@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2
+
+* Device scan hides unnamed devices (usually phones, watches or trackers nearby with rotating addresses), they appear only with `log_level: debug`
+* Gerätesuche blendet Geräte ohne Namen aus (meist fremde Handys, Uhren oder Tracker mit wechselnder Adresse), sichtbar nur mit `log_level: debug`
+
 ## 0.2.1
 
 * No crash loop when another service on the host already holds the HFP gateway role ("UUID already registered"): headsets fall back to the battery level BlueZ reports (`org.bluez.Battery1`), the log lists the D-Bus services for diagnosis
