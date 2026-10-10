@@ -627,3 +627,46 @@ def test_zero_percent_is_ignored_as_placeholder(private_bus) -> None:
         assert publisher.values == [("Razer", 70, "bluez")]
 
     asyncio.run(scenario())
+
+
+class HangingAdapter(ServiceInterface):
+    """Adapter, der auf StartDiscovery nie antwortet (so beobachtet auf einem Raspberry Pi)."""
+
+    def __init__(self) -> None:
+        super().__init__("org.bluez.Adapter1")
+
+    @method(name="SetDiscoveryFilter")
+    def set_discovery_filter(self, properties: "a{sv}"):
+        pass
+
+    @method(name="StartDiscovery")
+    async def start_discovery(self):
+        await asyncio.sleep(3600)
+
+    @method(name="StopDiscovery")
+    def stop_discovery(self):
+        pass
+
+
+def test_hanging_bluez_call_times_out(private_bus) -> None:
+    from bt_battery.app import BatteryService
+    from bt_battery.bluez import BlueZ
+    from bt_battery.config import AppConfig, MqttConfig
+
+    async def scenario() -> None:
+        fake_bus = await MessageBus(bus_type=BusType.SYSTEM, negotiate_unix_fd=True).connect()
+        fake_bus.export("/org/bluez/hci0", HangingAdapter())
+        await fake_bus.request_name("org.bluez")
+
+        config = AppConfig(
+            adapter="hci0", poll_interval_seconds=60, hold_seconds=5, disconnect_after_read=True,
+            log_level="INFO", scan_on_start=True, scan_seconds=0, monitor_all_paired=False,
+            mqtt=MqttConfig(host="unused"), devices=[],
+        )
+        bluez = BlueZ("hci0", call_timeout=0.5)
+        await bluez.connect()
+        service = BatteryService(config, bluez, RecordingPublisher())
+        # Die Suche bricht ab statt zu hängen, das Add-on läuft weiter
+        await asyncio.wait_for(service._scan(), 5)
+
+    asyncio.run(scenario())

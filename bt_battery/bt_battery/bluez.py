@@ -22,6 +22,9 @@ HFP_HF_UUID = "0000111e-0000-1000-8000-00805f9b34fb"
 BATTERY_SERVICE_UUID = "0000180f-0000-1000-8000-00805f9b34fb"
 PROFILE_PATH = "/io/github/tobi136b/bt_battery/hfp_ag"
 AGENT_PATH = "/io/github/tobi136b/bt_battery/agent"
+# dbus-fast wartet ohne Zeitlimit auf Antworten. Hängt BlueZ (z.B. Adapter beschäftigt),
+# würde das Add-on sonst für immer stehen bleiben.
+DBUS_CALL_TIMEOUT_SECONDS = 60.0
 
 
 def mac_to_path(adapter: str, mac: str) -> str:
@@ -101,17 +104,32 @@ class PairingAgent(ServiceInterface):
         pass
 
 
+class TimeoutMessageBus(MessageBus):
+    """MessageBus, bei dem jeder Methodenaufruf nach einem Zeitlimit mit DBusError abbricht."""
+
+    call_timeout = DBUS_CALL_TIMEOUT_SECONDS
+
+    async def call(self, msg: Message) -> Message:
+        try:
+            return await asyncio.wait_for(super().call(msg), self.call_timeout)
+        except asyncio.TimeoutError:
+            LOG.warning("BlueZ antwortet nicht auf %s (%s), Abbruch nach %d s", msg.member, msg.path, self.call_timeout)
+            raise DBusError("org.freedesktop.DBus.Error.Timeout", f"Keine Antwort auf {msg.member}") from None
+
+
 class BlueZ:
     """Hilfsfunktionen rund um Adapter, Geräte und Profilregistrierung."""
 
-    def __init__(self, adapter: str) -> None:
+    def __init__(self, adapter: str, call_timeout: float = DBUS_CALL_TIMEOUT_SECONDS) -> None:
         self.adapter = adapter
         self.adapter_path = f"/org/bluez/{adapter}"
+        self.call_timeout = call_timeout
         self.bus: MessageBus | None = None
 
     async def connect(self) -> None:
         # negotiate_unix_fd ist nötig, damit BlueZ uns den RFCOMM Socket übergeben kann
-        self.bus = await MessageBus(bus_type=BusType.SYSTEM, negotiate_unix_fd=True).connect()
+        self.bus = await TimeoutMessageBus(bus_type=BusType.SYSTEM, negotiate_unix_fd=True).connect()
+        self.bus.call_timeout = self.call_timeout
 
     async def _interface(self, path: str, interface: str) -> Any:
         introspection = await self.bus.introspect(BLUEZ, path)
