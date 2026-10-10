@@ -289,6 +289,7 @@ class RecordingPublisher:
     def __init__(self) -> None:
         self.values: list[tuple[str, int, str]] = []
         self.entities: dict[str, bool] = {}
+        self.reachable: dict[str, bool] = {}
 
     def publish_discovery(self, device) -> None:
         pass
@@ -298,6 +299,9 @@ class RecordingPublisher:
 
     def publish_device(self, device, monitored: bool) -> None:
         self.entities[device.mac] = monitored
+
+    def publish_reachable(self, device, reachable: bool) -> None:
+        self.reachable[device.mac] = reachable
 
     def publish_scan_result(self, devices) -> None:
         self.scan = devices
@@ -454,6 +458,7 @@ class ForeignHfpHeadset(ServiceInterface):
         self.bus = bus
         self.battery_values = battery_values
         self.battery = None
+        self.out_of_range = False
         self.is_connected = False
         self.connected_profiles: list[str] = []
 
@@ -471,6 +476,8 @@ class ForeignHfpHeadset(ServiceInterface):
 
     @method(name="ConnectProfile")
     def connect_profile(self, uuid: "s"):
+        if self.out_of_range:
+            raise DBusError("org.bluez.Error.Failed", "br-connection-timeout")
         self.connected_profiles.append(uuid)
         self.is_connected = True
         if self.battery is not None:
@@ -519,6 +526,7 @@ def test_fallback_when_hfp_is_occupied(private_bus) -> None:
         await service.poll_device(config.devices[0])
         assert headset.connected_profiles == ["0000111e-0000-1000-8000-00805f9b34fb"]
         assert publisher.values == [("Bose QC SC", 42, "bluez")]
+        assert publisher.reachable == {MAC: True}
         assert headset.is_connected is False
 
     asyncio.run(scenario())
@@ -609,6 +617,13 @@ def test_zero_percent_is_ignored_as_placeholder(private_bus) -> None:
         headset.battery_values = [0]
         await service.poll_device(config.devices[0])
         assert headset.connected_profiles == ["0000111e-0000-1000-8000-00805f9b34fb"] * 2
+        assert publisher.values == [("Razer", 70, "bluez")]
+        assert publisher.reachable == {MAC: True}
+
+        # Außer Reichweite: "Reachable" aus, der letzte Akkustand bleibt unverändert
+        headset.out_of_range = True
+        await service.poll_device(config.devices[0])
+        assert publisher.reachable == {MAC: False}
         assert publisher.values == [("Razer", 70, "bluez")]
 
     asyncio.run(scenario())
