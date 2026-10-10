@@ -37,7 +37,12 @@ Ohne Dongle geht auch `hci0`, dann teilen sich Add-on und HA Bluetooth den Adapt
 
 ## Einrichtung
 
-1. MAC Adressen der Geräte heraussuchen (z.B. iPhone: Einstellungen > Allgemein > Info, oder Hersteller App; ansonsten im Add-on Protokoll beim Koppeln).
+1. Geräte finden, dafür gibt es drei Wege:
+   * **Automatische Suche:** Geräte einschalten (neue in den Kopplungsmodus) und das Add-on starten.
+     Es sucht beim Start und listet alle Geräte in der Nähe mit MAC Adresse, Typ und Akku Methode
+     im Protokoll und im Sensor **"Found devices"** (Attribut `devices`).
+   * **Bereits gekoppelte Geräte:** `monitor_all_paired: true` setzen, dann wird jedes am Adapter gekoppelte Gerät ohne MAC Eingabe überwacht.
+   * **Windows PC:** `python tools/find_bluetooth_devices.py` aus diesem Repository ausführen. Es listet alle mit Windows gekoppelten Geräte mit MAC Adresse und Akkustand und gibt einen fertigen Block für die Optionen aus.
 2. Optionen ausfüllen:
 
    ```yaml
@@ -62,6 +67,9 @@ Ohne Dongle geht auch `hci0`, dann teilen sich Add-on und HA Bluetooth den Adapt
 | `hold_seconds` | Wartezeit auf die Akkumeldung pro Verbindung |
 | `disconnect_after_read` | Nach dem Lesen trennen (empfohlen) |
 | `log_level` | `debug` zeigt den kompletten AT Dialog, hilfreich bei Problemen |
+| `scan_on_start` | Beim Start nach Geräten suchen und auflisten (Standard an) |
+| `scan_seconds` | Suchdauer, Standard 30 |
+| `monitor_all_paired` | Alle gekoppelten Geräte automatisch überwachen |
 
 ## Bekannte Grenzen
 

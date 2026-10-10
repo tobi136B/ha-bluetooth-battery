@@ -15,7 +15,7 @@ import os
 
 from dbus_fast import DBusError
 
-from .bluez import HFP_HF_UUID, BlueZ, close_fd, path_to_mac
+from .bluez import BATTERY_SERVICE_UUID, HFP_HF_UUID, BlueZ, close_fd, path_to_mac
 from .config import AppConfig, DeviceConfig
 from .hfp import BatteryReport, HfpAgSession
 from .mqtt_publisher import MqttPublisher
@@ -78,13 +78,15 @@ class BatteryService:
         self.bluez = bluez
         self.publisher = publisher
         self._connections: dict[str, HfpConnection] = {}
+        self._devices: dict[str, DeviceConfig] = {device.mac: device for device in config.devices}
+        self._announced: set[str] = set()
         self._tasks: set[asyncio.Task] = set()
 
     # Rückrufe aus dem BlueZ Profil
 
     def on_new_connection(self, device_path: str, fd: int) -> None:
         mac = path_to_mac(device_path)
-        device = self.config.device(mac)
+        device = self._devices.get(mac.upper())
         if device is None:
             LOG.info("Verbindung von nicht konfiguriertem Gerät %s abgelehnt", mac)
             close_fd(fd)
@@ -185,11 +187,68 @@ class BatteryService:
             if connected_by_us and self.config.disconnect_after_read:
                 await self.bluez.disconnect(device.mac)
 
+    # Gerätesuche
+
+    @staticmethod
+    def describe(state: dict) -> dict:
+        """Kurzbeschreibung eines Geräts für Protokoll und Sensor "Found devices"."""
+        uuids = state.get("UUIDs", [])
+        if HFP_HF_UUID in uuids:
+            method = "hfp"
+        elif BATTERY_SERVICE_UUID in uuids or state.get("BatteryPercentage") is not None:
+            method = "ble_battery"
+        else:
+            method = "unknown"
+        return {
+            "mac": state.get("Address", ""),
+            "name": state.get("Alias") or state.get("Name") or "",
+            "type": state.get("Icon", ""),
+            "paired": bool(state.get("Paired")),
+            "rssi": state.get("RSSI"),
+            "battery_method": method,
+        }
+
+    async def scan_and_report(self) -> None:
+        LOG.info("Suche %d s nach Bluetooth Geräten (Geräte einschalten, ggf. Kopplungsmodus)", self.config.scan_seconds)
+        await self.bluez.scan(self.config.scan_seconds)
+        found = [self.describe(state) for state in await self.bluez.devices()]
+        # Gekoppelte und gerade gesehene Geräte zeigen, nach Signalstärke sortiert
+        found = [entry for entry in found if entry["paired"] or entry["rssi"] is not None]
+        found.sort(key=lambda entry: entry["rssi"] if entry["rssi"] is not None else -999, reverse=True)
+        LOG.info("%d Geräte gefunden:", len(found))
+        for entry in found:
+            LOG.info(
+                "  %s  %-30s %-16s gekoppelt=%s akku=%s",
+                entry["mac"], entry["name"][:30], entry["type"], "ja" if entry["paired"] else "nein", entry["battery_method"],
+            )
+        LOG.info("Gewünschte Geräte mit MAC unter 'devices' eintragen (oder monitor_all_paired aktivieren)")
+        self.publisher.publish_scan_result(found)
+
+    async def refresh_devices(self) -> None:
+        """Ergänzt bei monitor_all_paired alle gekoppelten Geräte und meldet neue Geräte an HA."""
+        if self.config.monitor_all_paired:
+            for state in await self.bluez.devices():
+                mac = state.get("Address", "").upper()
+                if state.get("Paired") and mac and mac not in self._devices:
+                    name = state.get("Alias") or state.get("Name") or mac
+                    self._devices[mac] = DeviceConfig(mac=mac, name=name)
+                    LOG.info("Gekoppeltes Gerät übernommen: %s (%s)", name, mac)
+        for device in self._devices.values():
+            if device.mac not in self._announced:
+                self.publisher.publish_discovery(device)
+                self._announced.add(device.mac)
+
     async def run(self) -> None:
-        for device in self.config.devices:
-            self.publisher.publish_discovery(device)
+        if self.config.scan_on_start:
+            try:
+                await self.scan_and_report()
+            except DBusError as error:
+                LOG.warning("Gerätesuche fehlgeschlagen: %s", error)
         while True:
-            for device in self.config.devices:
+            await self.refresh_devices()
+            if not self._devices:
+                LOG.info("Noch keine Geräte konfiguriert, siehe Sensor 'Found devices' oder das Protokoll oben")
+            for device in list(self._devices.values()):
                 try:
                     await self.poll_device(device)
                 except DBusError as error:

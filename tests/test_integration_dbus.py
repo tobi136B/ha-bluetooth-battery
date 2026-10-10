@@ -105,6 +105,19 @@ class Adapter(ServiceInterface):
     def __init__(self) -> None:
         super().__init__("org.bluez.Adapter1")
         self._powered = False
+        self.discovering = False
+
+    @method(name="SetDiscoveryFilter")
+    def set_discovery_filter(self, properties: "a{sv}"):
+        pass
+
+    @method(name="StartDiscovery")
+    def start_discovery(self):
+        self.discovering = True
+
+    @method(name="StopDiscovery")
+    def stop_discovery(self):
+        self.discovering = False
 
     @dbus_property(name="Powered")
     def powered(self) -> "b":
@@ -131,6 +144,22 @@ class Device(ServiceInterface):
     @trusted.setter
     def trusted(self, value: "b"):
         pass
+
+    @dbus_property(access=PropertyAccess.READ, name="Address")
+    def address(self) -> "s":
+        return MAC
+
+    @dbus_property(access=PropertyAccess.READ, name="Alias")
+    def alias(self) -> "s":
+        return "Bose QC SC"
+
+    @dbus_property(access=PropertyAccess.READ, name="Icon")
+    def icon(self) -> "s":
+        return "audio-headset"
+
+    @dbus_property(access=PropertyAccess.READ, name="RSSI")
+    def rssi(self) -> "n":
+        return -50
 
     @dbus_property(access=PropertyAccess.READ, name="UUIDs")
     def uuids(self) -> "as":
@@ -180,6 +209,14 @@ class BleDevice(ServiceInterface):
     def connected(self) -> "b":
         return self.is_connected
 
+    @dbus_property(access=PropertyAccess.READ, name="Address")
+    def address(self) -> "s":
+        return BLE_MAC
+
+    @dbus_property(access=PropertyAccess.READ, name="Alias")
+    def alias(self) -> "s":
+        return "MX Master"
+
     @dbus_property(access=PropertyAccess.READ, name="UUIDs")
     def uuids(self) -> "as":
         return ["0000180f-0000-1000-8000-00805f9b34fb"]
@@ -201,6 +238,9 @@ class RecordingPublisher:
 
     def publish_discovery(self, device) -> None:
         pass
+
+    def publish_scan_result(self, devices) -> None:
+        self.scan = devices
 
     def publish_battery(self, device, level: int, source: str) -> None:
         self.values.append((device.name, level, source))
@@ -242,6 +282,9 @@ def test_full_flow(private_bus) -> None:
             hold_seconds=5,
             disconnect_after_read=True,
             log_level="DEBUG",
+            scan_on_start=True,
+            scan_seconds=0,
+            monitor_all_paired=False,
             mqtt=MqttConfig(host="unused"),
             devices=[DeviceConfig(mac=MAC, name="Bose QC SC"), DeviceConfig(mac=BLE_MAC, name="BLE Maus")],
         )
@@ -272,5 +315,42 @@ def test_full_flow(private_bus) -> None:
         await service.poll_device(config.devices[1])
         assert publisher.values[-1] == ("BLE Maus", 42, "bluez")
         assert ble_device.disconnect_calls == 1
+
+    asyncio.run(scenario())
+
+
+def test_scan_and_monitor_all_paired(private_bus) -> None:
+    from bt_battery.app import BatteryService
+    from bt_battery.bluez import BlueZ
+    from bt_battery.config import AppConfig, MqttConfig
+
+    async def scenario() -> None:
+        fake_bus = await MessageBus(bus_type=BusType.SYSTEM, negotiate_unix_fd=True).connect()
+        state = FakeBluez(fake_bus)
+        fake_bus.export("/org/bluez/hci0", Adapter())
+        fake_bus.export(DEVICE_PATH, Device(state))
+        fake_bus.export(BLE_PATH, BleDevice(fake_bus))
+        await fake_bus.request_name("org.bluez")
+
+        config = AppConfig(
+            adapter="hci0", poll_interval_seconds=60, hold_seconds=5, disconnect_after_read=True,
+            log_level="INFO", scan_on_start=True, scan_seconds=0, monitor_all_paired=True,
+            mqtt=MqttConfig(host="unused"), devices=[],
+        )
+        publisher = RecordingPublisher()
+        bluez = BlueZ("hci0")
+        await bluez.connect()
+        service = BatteryService(config, bluez, publisher)
+
+        await service.scan_and_report()
+        by_mac = {entry["mac"]: entry for entry in publisher.scan}
+        assert by_mac[MAC]["battery_method"] == "hfp" and by_mac[MAC]["type"] == "audio-headset"
+        assert by_mac[BLE_MAC]["battery_method"] == "ble_battery" and by_mac[BLE_MAC]["name"] == "MX Master"
+        # Stärkstes Signal zuerst, Geräte ohne RSSI (nur gekoppelt) am Ende
+        assert publisher.scan[0]["mac"] == MAC
+
+        await service.refresh_devices()
+        assert sorted(service._devices) == [MAC, BLE_MAC]
+        assert service._devices[BLE_MAC].name == "MX Master"
 
     asyncio.run(scenario())

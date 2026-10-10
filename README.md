@@ -16,6 +16,16 @@ every device.
 
 Setup details: [bt_battery/DOCS.md](bt_battery/DOCS.md).
 
+## Finding your devices
+
+* The add-on scans on start and lists all nearby devices with MAC address in the log and in the sensor "Found devices".
+* With `monitor_all_paired: true` every paired device is monitored without entering a MAC.
+* On Windows, [tools/find_bluetooth_devices.py](tools/find_bluetooth_devices.py) lists all paired devices with MAC address and battery level (standard library only, Python 3.12 or newer):
+
+  ```powershell
+  python tools\find_bluetooth_devices.py
+  ```
+
 ## How it works
 
 **BLE devices:** The add-on connects briefly, BlueZ reads the standard Battery

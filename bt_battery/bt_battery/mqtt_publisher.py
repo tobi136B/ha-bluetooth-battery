@@ -39,7 +39,7 @@ class MqttPublisher:
     def publish_discovery(self, device: DeviceConfig) -> None:
         # Ohne availability: der zuletzt bekannte Wert bleibt sichtbar, wenn das Gerät aus ist
         payload = {
-            "name": "Akku",
+            "name": "Battery",
             "unique_id": device.object_id,
             "state_topic": self.state_topic(device),
             "value_template": "{{ value_json.level }}",
@@ -55,6 +55,27 @@ class MqttPublisher:
         }
         topic = f"{DISCOVERY_PREFIX}/sensor/{device.object_id}/config"
         self._client.publish(topic, json.dumps(payload), retain=True)
+
+    def publish_scan_result(self, devices: list[dict]) -> None:
+        """Sensor mit allen gefundenen Geräten, damit man MAC Adressen direkt in HA sieht."""
+        topic = f"{BASE_TOPIC}/scan/state"
+        payload = {
+            "name": "Found devices",
+            "unique_id": "bt_battery_scan",
+            "state_topic": topic,
+            "value_template": "{{ value_json.count }}",
+            "json_attributes_topic": topic,
+            "json_attributes_template": "{{ {'devices': value_json.devices, 'scanned': value_json.scanned} | tojson }}",
+            "icon": "mdi:bluetooth-audio",
+            "device": {"identifiers": ["bt_battery_addon"], "name": "Bluetooth Battery"},
+        }
+        self._client.publish(f"{DISCOVERY_PREFIX}/sensor/bt_battery_scan/config", json.dumps(payload), retain=True)
+        state = {
+            "count": len(devices),
+            "devices": devices,
+            "scanned": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        self._client.publish(topic, json.dumps(state), retain=True)
 
     def publish_battery(self, device: DeviceConfig, level: int, source: str) -> None:
         payload = {

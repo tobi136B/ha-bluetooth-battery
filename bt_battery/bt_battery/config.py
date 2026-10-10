@@ -36,6 +36,9 @@ class AppConfig:
     hold_seconds: int
     disconnect_after_read: bool
     log_level: str
+    scan_on_start: bool
+    scan_seconds: int
+    monitor_all_paired: bool
     mqtt: MqttConfig
     devices: list[DeviceConfig] = field(default_factory=list)
 
@@ -66,6 +69,9 @@ def load_config(options_path: Path = Path("/data/options.json")) -> AppConfig:
         hold_seconds=int(options.get("hold_seconds", 20)),
         disconnect_after_read=bool(options.get("disconnect_after_read", True)),
         log_level=str(options.get("log_level", "info")).upper(),
+        scan_on_start=bool(options.get("scan_on_start", True)),
+        scan_seconds=int(options.get("scan_seconds", 30)),
+        monitor_all_paired=bool(options.get("monitor_all_paired", False)),
         mqtt=mqtt,
         devices=devices,
     )

@@ -37,7 +37,12 @@ Without a dongle `hci0` works too; the add-on and HA Bluetooth then share the ad
 
 ## Setup
 
-1. Find the MAC addresses of your devices (vendor app, device label, or the add-on log while pairing).
+1. Find your devices, there are three ways:
+   * **Automatic scan:** switch the devices on (put new ones into pairing mode) and start the add-on.
+     It scans on start and lists every nearby device with MAC address, type and battery method
+     in the log and in the sensor **"Found devices"** (attribute `devices`).
+   * **Already paired devices:** set `monitor_all_paired: true`, then every device paired with the adapter is monitored without entering a MAC.
+   * **Windows PC:** run `python tools/find_bluetooth_devices.py` from this repository. It lists all devices paired with Windows, with MAC address and battery level, and prints a ready block for the options.
 2. Fill in the options:
 
    ```yaml
@@ -62,6 +67,9 @@ Without a dongle `hci0` works too; the add-on and HA Bluetooth then share the ad
 | `hold_seconds` | How long to wait for a battery report per connection |
 | `disconnect_after_read` | Disconnect after reading (recommended) |
 | `log_level` | `debug` shows the full AT dialog, useful for troubleshooting |
+| `scan_on_start` | Scan for nearby devices on start and list them (default on) |
+| `scan_seconds` | Scan duration, default 30 |
+| `monitor_all_paired` | Monitor every paired device automatically |
 
 ## Known limitations
 

@@ -16,6 +16,16 @@ Wert samt Zeitstempel erhalten.
 
 Details zur Einrichtung stehen in [bt_battery/DOCS.de.md](bt_battery/DOCS.de.md).
 
+## Geräte finden
+
+* Das Add-on sucht beim Start und listet alle Geräte in der Nähe mit MAC Adresse im Protokoll und im Sensor "Found devices".
+* Mit `monitor_all_paired: true` wird jedes gekoppelte Gerät ohne MAC Eingabe überwacht.
+* Unter Windows listet [tools/find_bluetooth_devices.py](tools/find_bluetooth_devices.py) alle gekoppelten Geräte mit MAC Adresse und Akkustand (nur Standardbibliothek, Python 3.12 oder neuer):
+
+  ```powershell
+  python tools\find_bluetooth_devices.py
+  ```
+
 ## Funktionsweise
 
 **BLE Geräte:** Das Add-on verbindet kurz, BlueZ liest den Standard Akku Dienst
