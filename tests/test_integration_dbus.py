@@ -185,12 +185,14 @@ BLE_PATH = "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_02"
 
 
 class Battery(ServiceInterface):
-    def __init__(self) -> None:
+    def __init__(self, values: list[int] | None = None) -> None:
         super().__init__("org.bluez.Battery1")
+        # Werte nacheinander, der letzte bleibt stehen
+        self.values = list(values or [42])
 
     @dbus_property(access=PropertyAccess.READ, name="Percentage")
     def percentage(self) -> "y":
-        return 42
+        return self.values.pop(0) if len(self.values) > 1 else self.values[0]
 
 
 class BleDevice(ServiceInterface):
@@ -447,9 +449,11 @@ class OccupiedProfileManager(ServiceInterface):
 class ForeignHfpHeadset(ServiceInterface):
     """Kopfhörer, dessen HFP Verbindung ein fremder Dienst bedient und den Akku an BlueZ meldet."""
 
-    def __init__(self, bus: MessageBus) -> None:
+    def __init__(self, bus: MessageBus, battery_values: list[int] | None = None) -> None:
         super().__init__("org.bluez.Device1")
         self.bus = bus
+        self.battery_values = battery_values
+        self.battery = None
         self.is_connected = False
         self.connected_profiles: list[str] = []
 
@@ -469,11 +473,18 @@ class ForeignHfpHeadset(ServiceInterface):
     def connect_profile(self, uuid: "s"):
         self.connected_profiles.append(uuid)
         self.is_connected = True
-        self.bus.export(DEVICE_PATH, Battery())
+        if self.battery is not None:
+            self.bus.unexport(DEVICE_PATH, self.battery)
+        self.battery = Battery(self.battery_values)
+        self.bus.export(DEVICE_PATH, self.battery)
 
     @method(name="Disconnect")
     def disconnect(self):
         self.is_connected = False
+        # BlueZ entfernt Battery1, sobald der Akku Anbieter die Verbindung verliert
+        if self.battery is not None:
+            self.bus.unexport(DEVICE_PATH, self.battery)
+            self.battery = None
 
 
 def test_fallback_when_hfp_is_occupied(private_bus) -> None:
@@ -565,5 +576,39 @@ def test_selection_in_home_assistant_survives_restart(private_bus, tmp_path) -> 
         service.handle_command("bt_battery/bt_battery_aabbccddee01/monitor/set", "OFF")
         assert service._devices == {}
         assert DeviceStore(store_path).get(MAC)["monitored"] is False
+
+    asyncio.run(scenario())
+
+
+def test_zero_percent_is_ignored_as_placeholder(private_bus) -> None:
+    from bt_battery.app import BatteryService
+    from bt_battery.bluez import BlueZ
+    from bt_battery.config import AppConfig, DeviceConfig, MqttConfig
+
+    async def scenario() -> None:
+        fake_bus = await MessageBus(bus_type=BusType.SYSTEM, negotiate_unix_fd=True).connect()
+        # Wie beim Razer: erst 0 %, später der echte Wert
+        headset = ForeignHfpHeadset(fake_bus, battery_values=[0, 0, 70])
+        fake_bus.export(DEVICE_PATH, headset)
+        await fake_bus.request_name("org.bluez")
+
+        config = AppConfig(
+            adapter="hci0", poll_interval_seconds=60, hold_seconds=5, disconnect_after_read=True,
+            log_level="INFO", scan_on_start=False, scan_seconds=0, monitor_all_paired=False,
+            mqtt=MqttConfig(host="unused"), devices=[DeviceConfig(mac=MAC, name="Razer")],
+        )
+        publisher = RecordingPublisher()
+        bluez = BlueZ("hci0")
+        await bluez.connect()
+        service = BatteryService(config, bluez, publisher)
+        service.hfp_available = False
+        await service.poll_device(config.devices[0])
+        assert publisher.values == [("Razer", 70, "bluez")]
+
+        # Bleibt es bei 0 %, wird nichts veröffentlicht
+        headset.battery_values = [0]
+        await service.poll_device(config.devices[0])
+        assert headset.connected_profiles == ["0000111e-0000-1000-8000-00805f9b34fb"] * 2
+        assert publisher.values == [("Razer", 70, "bluez")]
 
     asyncio.run(scenario())

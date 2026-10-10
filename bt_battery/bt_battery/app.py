@@ -192,15 +192,22 @@ class BatteryService:
                 return
         try:
             # BlueZ liest den BLE Akku Dienst kurz nach dem Verbinden
+            saw_zero = False
             for _ in range(self.config.hold_seconds):
                 level = state.get("BatteryPercentage")
-                if level is not None:
+                if level is not None and int(level) > 0:
                     LOG.info("%s: %d %% (bluez)", device.name, level)
                     self.publisher.publish_battery(device, int(level), "bluez")
                     return
+                # 0 % ist ein Platzhalter (manche Headsets bzw. Audio Server melden ihn vor dem echten
+                # Wert), ein Gerät mit leerem Akku wäre gar nicht erreichbar. Weiter warten.
+                saw_zero = saw_zero or level is not None
                 await asyncio.sleep(1)
                 state = await self.bluez.device_state(device.mac) or {}
-            LOG.info("%s: kein Akkustand verfügbar (Gerät oder Host meldet keinen Akku an BlueZ)", device.name)
+            if saw_zero:
+                LOG.info("%s: nur 0 %% gemeldet, als Platzhalter ignoriert", device.name)
+            else:
+                LOG.info("%s: kein Akkustand verfügbar (Gerät oder Host meldet keinen Akku an BlueZ)", device.name)
         finally:
             # Nur trennen, was wir selbst verbunden haben (z.B. keine Maus, die gerade benutzt wird)
             if connected_by_us and self.config.disconnect_after_read:

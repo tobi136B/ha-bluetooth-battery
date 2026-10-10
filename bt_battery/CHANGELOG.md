@@ -2,7 +2,9 @@
 
 ## 0.3.1
 
+* Fix: a battery level of 0 % from BlueZ is treated as a placeholder and ignored, the add-on keeps waiting for the real value (seen with Razer headsets)
 * Option `devices` is marked optional, devices are normally chosen in Home Assistant
+* Fix: 0 % von BlueZ gilt als Platzhalter und wird ignoriert, das Add-on wartet weiter auf den echten Wert (beobachtet bei Razer Headsets)
 * Option `devices` als optional gekennzeichnet, Geräte werden normalerweise in Home Assistant ausgewählt
 
 ## 0.3.0
