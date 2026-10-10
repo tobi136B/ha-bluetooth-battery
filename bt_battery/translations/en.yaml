@@ -11,5 +11,13 @@ configuration:
     name: Wait for battery report (seconds)
   disconnect_after_read:
     name: Disconnect after reading
+  scan_on_start:
+    name: Scan for devices on start
+    description: Lists all nearby devices with MAC address in the log and in the "Found devices" sensor.
+  scan_seconds:
+    name: Scan duration (seconds)
+  monitor_all_paired:
+    name: Monitor all paired devices
+    description: Automatically monitors every device paired with the adapter, no MAC needed.
   log_level:
     name: Log level

@@ -1,5 +1,5 @@
 name: Bluetooth Battery
-version: "0.1.0"
+version: "0.2.0"
 slug: bt_battery
 description: Read the battery level of Bluetooth devices (headphones, headsets, BLE) directly on HA OS
 url: https://github.com/tobi136B/ha-bluetooth-battery
@@ -20,6 +20,9 @@ options:
   hold_seconds: 20
   disconnect_after_read: true
   log_level: info
+  scan_on_start: true
+  scan_seconds: 30
+  monitor_all_paired: false
 schema:
   adapter: match(^hci[0-9]+$)
   devices:
@@ -29,3 +32,6 @@ schema:
   hold_seconds: int(5,120)
   disconnect_after_read: bool
   log_level: list(debug|info|warning)
+  scan_on_start: bool
+  scan_seconds: int(5,120)
+  monitor_all_paired: bool

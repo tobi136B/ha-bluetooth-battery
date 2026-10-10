@@ -14,5 +14,13 @@ configuration:
   disconnect_after_read:
     name: Nach dem Lesen trennen
     description: Gibt den Verbindungsplatz am Kopfhörer wieder frei (empfohlen bei Multipoint).
+  scan_on_start:
+    name: Beim Start nach Geräten suchen
+    description: Listet alle Geräte in der Nähe mit MAC Adresse im Protokoll und im Sensor "Found devices".
+  scan_seconds:
+    name: Suchdauer (Sekunden)
+  monitor_all_paired:
+    name: Alle gekoppelten Geräte überwachen
+    description: Überwacht automatisch jedes am Adapter gekoppelte Gerät, ohne MAC Eingabe.
   log_level:
     name: Protokollstufe

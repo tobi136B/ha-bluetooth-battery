@@ -19,6 +19,7 @@ LOG = logging.getLogger(__name__)
 BLUEZ = "org.bluez"
 HFP_AG_UUID = "0000111f-0000-1000-8000-00805f9b34fb"
 HFP_HF_UUID = "0000111e-0000-1000-8000-00805f9b34fb"
+BATTERY_SERVICE_UUID = "0000180f-0000-1000-8000-00805f9b34fb"
 PROFILE_PATH = "/io/github/tobi136b/bt_battery/hfp_ag"
 AGENT_PATH = "/io/github/tobi136b/bt_battery/agent"
 
@@ -140,8 +141,8 @@ class BlueZ:
             await adapter.set_powered(True)
             LOG.info("Adapter %s eingeschaltet", self.adapter)
 
-    async def device_state(self, mac: str) -> dict[str, Any] | None:
-        """Liefert die Device1 Eigenschaften eines Geräts oder None, wenn BlueZ es nicht kennt."""
+    async def _managed_objects(self) -> dict[str, Any]:
+        # Direkter Aufruf, weil nicht jede BlueZ Version ObjectManager in der Introspection auflistet
         reply = await self.bus.call(
             Message(
                 destination=BLUEZ,
@@ -152,8 +153,10 @@ class BlueZ:
         )
         if reply.message_type == MessageType.ERROR:
             raise DBusError(reply.error_name, str(reply.body))
-        objects = reply.body[0]
-        interfaces = objects.get(mac_to_path(self.adapter, mac), {})
+        return reply.body[0]
+
+    @staticmethod
+    def _device_from_interfaces(interfaces: dict[str, Any]) -> dict[str, Any] | None:
         device = interfaces.get("org.bluez.Device1")
         if device is None:
             return None
@@ -162,6 +165,36 @@ class BlueZ:
         battery = interfaces.get("org.bluez.Battery1")
         state["BatteryPercentage"] = battery["Percentage"].value if battery and "Percentage" in battery else None
         return state
+
+    async def device_state(self, mac: str) -> dict[str, Any] | None:
+        """Liefert die Device1 Eigenschaften eines Geräts oder None, wenn BlueZ es nicht kennt."""
+        objects = await self._managed_objects()
+        return self._device_from_interfaces(objects.get(mac_to_path(self.adapter, mac), {}))
+
+    async def devices(self) -> list[dict[str, Any]]:
+        """Alle Geräte, die BlueZ an diesem Adapter kennt (gekoppelt oder kürzlich gesehen)."""
+        prefix = self.adapter_path + "/dev_"
+        objects = await self._managed_objects()
+        result = []
+        for path, interfaces in objects.items():
+            if path.startswith(prefix) and "/" not in path[len(prefix):]:
+                state = self._device_from_interfaces(interfaces)
+                if state is not None:
+                    result.append(state)
+        return result
+
+    async def scan(self, seconds: int) -> None:
+        """Sucht Classic und BLE Geräte in der Umgebung."""
+        adapter = await self._interface(self.adapter_path, "org.bluez.Adapter1")
+        await adapter.call_set_discovery_filter({"Transport": Variant("s", "auto")})
+        await adapter.call_start_discovery()
+        try:
+            await asyncio.sleep(seconds)
+        finally:
+            try:
+                await adapter.call_stop_discovery()
+            except DBusError:
+                pass
 
     async def pair(self, mac: str, discovery_seconds: int = 20) -> bool:
         """Sucht das Gerät (muss im Kopplungsmodus sein), koppelt es und setzt es vertrauenswürdig."""
