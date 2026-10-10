@@ -150,6 +150,7 @@ class BatteryService:
             LOG.info("%s: erfolgreich gekoppelt", device.name)
             return True
         LOG.warning("%s: nicht gefunden oder Kopplung fehlgeschlagen, neuer Versuch im nächsten Durchlauf", device.name)
+        self.publisher.publish_reachable(device, False)
         return False
 
     async def poll_device(self, device: DeviceConfig) -> None:
@@ -172,8 +173,10 @@ class BatteryService:
         try:
             await asyncio.wait_for(self.bluez.connect_hfp(device.mac), CONNECT_TIMEOUT_SECONDS)
         except (DBusError, asyncio.TimeoutError) as error:
-            LOG.debug("%s: nicht erreichbar (%s)", device.name, error)
+            LOG.info("%s: nicht erreichbar (%s)", device.name, error)
+            self.publisher.publish_reachable(device, False)
             return
+        self.publisher.publish_reachable(device, True)
         # Auf das Ende der Sitzung warten, damit Geräte nacheinander abgefragt werden
         connection = self._connections.get(device.mac)
         if connection is not None:
@@ -188,8 +191,10 @@ class BatteryService:
                 await asyncio.wait_for(connect(device.mac), CONNECT_TIMEOUT_SECONDS)
                 connected_by_us = True
             except (DBusError, asyncio.TimeoutError) as error:
-                LOG.debug("%s: nicht erreichbar (%s)", device.name, error)
+                LOG.info("%s: nicht erreichbar (%s)", device.name, error)
+                self.publisher.publish_reachable(device, False)
                 return
+        self.publisher.publish_reachable(device, True)
         try:
             # BlueZ liest den BLE Akku Dienst kurz nach dem Verbinden
             saw_zero = False

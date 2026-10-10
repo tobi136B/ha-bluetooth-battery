@@ -44,7 +44,9 @@ Without a dongle `hci0` works too; the add-on and HA Bluetooth then share the ad
 2. Under Settings > Devices & services > MQTT, every found headset, speaker or input device
    now appears as its own device. Open it and switch on **"Monitor battery"**.
 3. The add-on pairs the device if needed and queries it right away. The **"Battery"** sensor
-   appears on the same device.
+   appears on the same device, together with **"Last update"** (when the level was last
+   measured) and **"Reachable"** (whether the last query could connect). If the device is out of
+   range, "Reachable" turns off and "Battery" keeps the last known value.
 
 Found devices and your selection are stored in `/data/devices.json` and stay after a restart.
 Switching "Monitor battery" off removes the battery sensor again. The sensor **"Found devices"**

@@ -93,8 +93,21 @@ class MqttPublisher:
         if monitored:
             self.publish_discovery(device)
         else:
-            # Leere retained Nachricht entfernt den Akku Sensor wieder aus HA
-            self._client.publish(f"{DISCOVERY_PREFIX}/sensor/{device.object_id}/config", "", retain=True)
+            # Leere retained Nachrichten entfernen die Sensoren wieder aus HA
+            for topic in self._sensor_config_topics(device):
+                self._client.publish(topic, "", retain=True)
+
+    @staticmethod
+    def reachable_topic(device: DeviceConfig) -> str:
+        return f"{BASE_TOPIC}/{device.object_id}/reachable"
+
+    @staticmethod
+    def _sensor_config_topics(device: DeviceConfig) -> list[str]:
+        return [
+            f"{DISCOVERY_PREFIX}/sensor/{device.object_id}/config",
+            f"{DISCOVERY_PREFIX}/sensor/{device.object_id}_last_update/config",
+            f"{DISCOVERY_PREFIX}/binary_sensor/{device.object_id}_reachable/config",
+        ]
 
     def publish_discovery(self, device: DeviceConfig) -> None:
         # Ohne availability: der zuletzt bekannte Wert bleibt sichtbar, wenn das Gerät aus ist
@@ -109,8 +122,32 @@ class MqttPublisher:
             "state_class": "measurement",
             "device": self.device_info(device),
         }
-        topic = f"{DISCOVERY_PREFIX}/sensor/{device.object_id}/config"
-        self._client.publish(topic, json.dumps(payload), retain=True)
+        battery_topic, last_update_topic, reachable_topic = self._sensor_config_topics(device)
+        self._client.publish(battery_topic, json.dumps(payload), retain=True)
+        # Zeitpunkt des zuletzt gemessenen Akkustands
+        last_update = {
+            "name": "Last update",
+            "unique_id": f"{device.object_id}_last_update",
+            "state_topic": self.state_topic(device),
+            "value_template": "{{ value_json.last_seen }}",
+            "device_class": "timestamp",
+            "entity_category": "diagnostic",
+            "device": self.device_info(device),
+        }
+        self._client.publish(last_update_topic, json.dumps(last_update), retain=True)
+        # Ergebnis der letzten Abfrage: konnte das Add-on das Gerät verbinden?
+        reachable = {
+            "name": "Reachable",
+            "unique_id": f"{device.object_id}_reachable",
+            "state_topic": self.reachable_topic(device),
+            "device_class": "connectivity",
+            "entity_category": "diagnostic",
+            "device": self.device_info(device),
+        }
+        self._client.publish(reachable_topic, json.dumps(reachable), retain=True)
+
+    def publish_reachable(self, device: DeviceConfig, reachable: bool) -> None:
+        self._client.publish(self.reachable_topic(device), "ON" if reachable else "OFF", retain=True)
 
     def publish_scan_result(self, devices: list[dict]) -> None:
         """Sensor mit allen gefundenen Geräten, damit man MAC Adressen direkt in HA sieht."""

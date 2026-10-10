@@ -44,7 +44,9 @@ Ohne Dongle geht auch `hci0`, dann teilen sich Add-on und HA Bluetooth den Adapt
 2. Unter Einstellungen > Geräte & Dienste > MQTT erscheint jeder gefundene Kopfhörer, Lautsprecher
    oder jedes Eingabegerät als eigenes Gerät. Öffnen und **"Monitor battery"** einschalten.
 3. Das Add-on koppelt das Gerät bei Bedarf und fragt es sofort ab. Am selben Gerät erscheint der
-   Sensor **"Battery"**.
+   Sensor **"Battery"**, dazu **"Last update"** (wann der Akkustand zuletzt gemessen wurde) und
+   **"Reachable"** (ob die letzte Abfrage verbinden konnte). Ist das Gerät außer Reichweite, geht
+   "Reachable" aus und "Battery" behält den zuletzt bekannten Wert.
 
 Gefundene Geräte und die Auswahl werden in `/data/devices.json` gespeichert und bleiben nach einem
 Neustart erhalten. Ausschalten von "Monitor battery" entfernt den Akku Sensor wieder. Der Sensor

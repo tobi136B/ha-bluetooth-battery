@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+
+* New per device: "Last update" (when the battery level was last measured) and "Reachable" (whether the last query could connect). The "Battery" sensor keeps the last known value
+* Neu pro Gerät: "Last update" (wann der Akkustand zuletzt gemessen wurde) und "Reachable" (ob die letzte Abfrage verbinden konnte). Der Sensor "Battery" behält den zuletzt bekannten Wert
+
 ## 0.3.1
 
 * Fix: a battery level of 0 % from BlueZ is treated as a placeholder and ignored, the add-on keeps waiting for the real value (seen with Razer headsets)
