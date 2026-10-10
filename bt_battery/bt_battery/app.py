@@ -80,6 +80,8 @@ class BatteryService:
         self._connections: dict[str, HfpConnection] = {}
         self._devices: dict[str, DeviceConfig] = {device.mac: device for device in config.devices}
         self._announced: set[str] = set()
+        # False, wenn ein anderer Dienst die HFP Gateway Rolle belegt (siehe __main__)
+        self.hfp_available = True
         self._tasks: set[asyncio.Task] = set()
 
     # Rückrufe aus dem BlueZ Profil
@@ -144,9 +146,13 @@ class BatteryService:
             return
         state = await self.bluez.device_state(device.mac) or {}
         if HFP_HF_UUID in state.get("UUIDs", []):
-            await self._poll_hfp(device)
+            if self.hfp_available:
+                await self._poll_hfp(device)
+            else:
+                # Der fremde HFP Dienst baut die Verbindung auf und meldet den Akku ggf. an BlueZ
+                await self._poll_bluez_battery(device, state, self.bluez.connect_hfp)
         else:
-            await self._poll_bluez_battery(device, state)
+            await self._poll_bluez_battery(device, state, self.bluez.connect_device)
 
     async def _poll_hfp(self, device: DeviceConfig) -> None:
         """Kopfhörer und Headsets: Akkustand über den HFP Steuerkanal."""
@@ -161,12 +167,12 @@ class BatteryService:
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(connection.battery_received.wait(), self.config.hold_seconds)
 
-    async def _poll_bluez_battery(self, device: DeviceConfig, state: dict) -> None:
+    async def _poll_bluez_battery(self, device: DeviceConfig, state: dict, connect) -> None:
         """Übrige Geräte (v.a. BLE): Akkustand, den BlueZ selbst über org.bluez.Battery1 bereitstellt."""
         connected_by_us = False
         if not state.get("Connected"):
             try:
-                await asyncio.wait_for(self.bluez.connect_device(device.mac), CONNECT_TIMEOUT_SECONDS)
+                await asyncio.wait_for(connect(device.mac), CONNECT_TIMEOUT_SECONDS)
                 connected_by_us = True
             except (DBusError, asyncio.TimeoutError) as error:
                 LOG.debug("%s: nicht erreichbar (%s)", device.name, error)
@@ -181,7 +187,7 @@ class BatteryService:
                     return
                 await asyncio.sleep(1)
                 state = await self.bluez.device_state(device.mac) or {}
-            LOG.info("%s: kein Akkustand verfügbar (Gerät bietet keinen Akku Dienst an?)", device.name)
+            LOG.info("%s: kein Akkustand verfügbar (Gerät oder Host meldet keinen Akku an BlueZ)", device.name)
         finally:
             # Nur trennen, was wir selbst verbunden haben (z.B. keine Maus, die gerade benutzt wird)
             if connected_by_us and self.config.disconnect_after_read:

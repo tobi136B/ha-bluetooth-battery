@@ -76,3 +76,4 @@ Ohne Dongle geht auch `hci0`, dann teilen sich Add-on und HA Bluetooth den Adapt
 * Ist das Gerät aus oder sind alle Verbindungsplätze belegt, bleibt der letzte Wert stehen.
 * Manche Kopfhörer sagen beim Verbinden "Connected" an. Dann das Intervall erhöhen.
 * Wenn ein Gerät keinen Wert liefert: `log_level: debug` setzen und das Protokoll ansehen.
+* Steht im Protokoll "UUID already registered", belegt ein anderer Dienst auf dem Host (z.B. ein Audio Server) bereits die HFP Gateway Rolle. Das Add-on liest dann ersatzweise den Akkustand, den BlueZ meldet; ob das klappt, hängt vom Host ab.

@@ -18,7 +18,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "bt_battery"))
 
-from dbus_fast import BusType, Message, MessageType, Variant  # noqa: E402
+from dbus_fast import BusType, DBusError, Message, MessageType, Variant  # noqa: E402
 from dbus_fast.aio import MessageBus  # noqa: E402
 from dbus_fast.service import PropertyAccess, ServiceInterface, dbus_property, method  # noqa: E402
 
@@ -293,7 +293,8 @@ def test_full_flow(private_bus) -> None:
         await bluez.connect()
         state.client_name = bluez.bus.unique_name
         service = BatteryService(config, bluez, publisher)
-        await bluez.register(HfpAgProfile(service.on_new_connection, service.on_disconnect_request), PairingAgent())
+        await bluez.register_agent(PairingAgent())
+        assert await bluez.register_hfp_profile(HfpAgProfile(service.on_new_connection, service.on_disconnect_request))
         await bluez.power_on()
 
         await service.poll_device(config.devices[0])
@@ -352,5 +353,85 @@ def test_scan_and_monitor_all_paired(private_bus) -> None:
         await service.refresh_devices()
         assert sorted(service._devices) == [MAC, BLE_MAC]
         assert service._devices[BLE_MAC].name == "MX Master"
+
+    asyncio.run(scenario())
+
+
+class OccupiedProfileManager(ServiceInterface):
+    """Simuliert einen Host, auf dem ein Audio Server die HFP Gateway Rolle schon belegt."""
+
+    def __init__(self) -> None:
+        super().__init__("org.bluez.ProfileManager1")
+
+    @method(name="RegisterProfile")
+    def register_profile(self, path: "o", uuid: "s", options: "a{sv}"):
+        raise DBusError("org.bluez.Error.NotPermitted", "UUID already registered")
+
+
+class ForeignHfpHeadset(ServiceInterface):
+    """Kopfhörer, dessen HFP Verbindung ein fremder Dienst bedient und den Akku an BlueZ meldet."""
+
+    def __init__(self, bus: MessageBus) -> None:
+        super().__init__("org.bluez.Device1")
+        self.bus = bus
+        self.is_connected = False
+        self.connected_profiles: list[str] = []
+
+    @dbus_property(access=PropertyAccess.READ, name="Paired")
+    def paired(self) -> "b":
+        return True
+
+    @dbus_property(access=PropertyAccess.READ, name="Connected")
+    def connected(self) -> "b":
+        return self.is_connected
+
+    @dbus_property(access=PropertyAccess.READ, name="UUIDs")
+    def uuids(self) -> "as":
+        return ["0000111e-0000-1000-8000-00805f9b34fb"]
+
+    @method(name="ConnectProfile")
+    def connect_profile(self, uuid: "s"):
+        self.connected_profiles.append(uuid)
+        self.is_connected = True
+        self.bus.export(DEVICE_PATH, Battery())
+
+    @method(name="Disconnect")
+    def disconnect(self):
+        self.is_connected = False
+
+
+def test_fallback_when_hfp_is_occupied(private_bus) -> None:
+    from bt_battery.app import BatteryService
+    from bt_battery.bluez import BlueZ, HfpAgProfile
+    from bt_battery.config import AppConfig, DeviceConfig, MqttConfig
+
+    async def scenario() -> None:
+        fake_bus = await MessageBus(bus_type=BusType.SYSTEM, negotiate_unix_fd=True).connect()
+        fake_bus.export("/org/bluez", OccupiedProfileManager())
+        headset = ForeignHfpHeadset(fake_bus)
+        fake_bus.export(DEVICE_PATH, headset)
+        await fake_bus.request_name("org.bluez")
+
+        config = AppConfig(
+            adapter="hci0", poll_interval_seconds=60, hold_seconds=5, disconnect_after_read=True,
+            log_level="INFO", scan_on_start=False, scan_seconds=0, monitor_all_paired=False,
+            mqtt=MqttConfig(host="unused"), devices=[DeviceConfig(mac=MAC, name="Bose QC SC")],
+        )
+        publisher = RecordingPublisher()
+        bluez = BlueZ("hci0")
+        await bluez.connect()
+        service = BatteryService(config, bluez, publisher)
+
+        # Kein Absturz mehr, sondern Rückfall auf org.bluez.Battery1
+        service.hfp_available = await bluez.register_hfp_profile(
+            HfpAgProfile(service.on_new_connection, service.on_disconnect_request)
+        )
+        assert service.hfp_available is False
+        assert "org.bluez" in await bluez.bus_names()
+
+        await service.poll_device(config.devices[0])
+        assert headset.connected_profiles == ["0000111e-0000-1000-8000-00805f9b34fb"]
+        assert publisher.values == [("Bose QC SC", 42, "bluez")]
+        assert headset.is_connected is False
 
     asyncio.run(scenario())
