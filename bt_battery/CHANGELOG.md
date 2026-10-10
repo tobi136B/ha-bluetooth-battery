@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1
+
+* Fix: the add-on could hang forever when BlueZ did not answer a call (seen during the device scan). Every BlueZ call now gives up after 60 s, logs which call hung and carries on
+* Fix: Das Add-on konnte für immer hängen bleiben, wenn BlueZ auf einen Aufruf nicht antwortete (beobachtet bei der Gerätesuche). Jeder BlueZ Aufruf bricht jetzt nach 60 s ab, protokolliert den hängenden Aufruf und macht weiter
+
 ## 0.4.0
 
 * New per device: "Last update" (when the battery level was last measured) and "Reachable" (whether the last query could connect). The "Battery" sensor keeps the last known value
