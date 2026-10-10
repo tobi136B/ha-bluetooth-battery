@@ -286,9 +286,16 @@ class UnnamedClassic(ServiceInterface):
 class RecordingPublisher:
     def __init__(self) -> None:
         self.values: list[tuple[str, int, str]] = []
+        self.entities: dict[str, bool] = {}
 
     def publish_discovery(self, device) -> None:
         pass
+
+    def publish_controls(self) -> None:
+        pass
+
+    def publish_device(self, device, monitored: bool) -> None:
+        self.entities[device.mac] = monitored
 
     def publish_scan_result(self, devices) -> None:
         self.scan = devices
@@ -502,5 +509,61 @@ def test_fallback_when_hfp_is_occupied(private_bus) -> None:
         assert headset.connected_profiles == ["0000111e-0000-1000-8000-00805f9b34fb"]
         assert publisher.values == [("Bose QC SC", 42, "bluez")]
         assert headset.is_connected is False
+
+    asyncio.run(scenario())
+
+
+def test_selection_in_home_assistant_survives_restart(private_bus, tmp_path) -> None:
+    from bt_battery.app import BatteryService
+    from bt_battery.bluez import BlueZ
+    from bt_battery.config import AppConfig, MqttConfig
+    from bt_battery.store import DeviceStore
+
+    async def scenario() -> None:
+        fake_bus = await MessageBus(bus_type=BusType.SYSTEM, negotiate_unix_fd=True).connect()
+        state = FakeBluez(fake_bus)
+        fake_bus.export("/org/bluez/hci0", Adapter())
+        fake_bus.export(DEVICE_PATH, Device(state))
+        fake_bus.export("/org/bluez/hci0/dev_41_C6_91_5F_D2_37", UnnamedNeighbour())
+        await fake_bus.request_name("org.bluez")
+
+        config = AppConfig(
+            adapter="hci0", poll_interval_seconds=60, hold_seconds=5, disconnect_after_read=True,
+            log_level="INFO", scan_on_start=True, scan_seconds=0, monitor_all_paired=False,
+            mqtt=MqttConfig(host="unused"), devices=[],
+        )
+        bluez = BlueZ("hci0")
+        await bluez.connect()
+        store_path = tmp_path / "devices.json"
+
+        # Erster Start: Suche legt das Gerät in HA an, noch nicht überwacht
+        publisher = RecordingPublisher()
+        service = BatteryService(config, bluez, publisher, DeviceStore(store_path))
+        await service.scan_and_report()
+        await service.refresh_devices()
+        assert publisher.entities == {MAC: False}
+        assert service._devices == {}
+
+        # Schalter in HA einschalten
+        service.handle_command("bt_battery/bt_battery_aabbccddee01/monitor/set", "ON")
+        assert publisher.entities[MAC] is True
+        assert list(service._devices) == [MAC]
+        assert service._wake.is_set()
+
+        # Suche aus HA anfordern
+        service.handle_command("bt_battery/scan/run", "PRESS")
+        assert service._scan_requested
+
+        # Neustart ohne Suche: Gerät und Auswahl sind noch da
+        publisher = RecordingPublisher()
+        service = BatteryService(config, bluez, publisher, DeviceStore(store_path))
+        await service.refresh_devices()
+        assert publisher.entities == {MAC: True}
+        assert service._devices[MAC].name == DeviceStore(store_path).get(MAC)["name"]
+
+        # Ausschalten entfernt das Gerät aus der Abfrage
+        service.handle_command("bt_battery/bt_battery_aabbccddee01/monitor/set", "OFF")
+        assert service._devices == {}
+        assert DeviceStore(store_path).get(MAC)["monitored"] is False
 
     asyncio.run(scenario())

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0
+
+* Choose devices directly in Home Assistant: every found headset, speaker or input device gets its own device with a "Monitor battery" switch. Switch it on and the "Battery" sensor appears, no MAC or YAML needed
+* Found devices and the selection are stored in `/data/devices.json` and stay after a restart
+* New button "Search devices" starts a scan from Home Assistant, no add-on restart needed
+* Devices in the `devices` option are still monitored as before
+* Geräte direkt in Home Assistant auswählen: Jeder gefundene Kopfhörer, Lautsprecher oder jedes Eingabegerät erscheint als eigenes Gerät mit dem Schalter "Monitor battery". Einschalten, dann erscheint der Sensor "Battery", ohne MAC oder YAML
+* Gefundene Geräte und die Auswahl werden in `/data/devices.json` gespeichert und bleiben nach einem Neustart erhalten
+* Neuer Knopf "Search devices" startet die Suche aus Home Assistant, ohne Neustart des Add-ons
+* Geräte aus der Option `devices` werden weiterhin überwacht
+
 ## 0.2.3
 
 * Fix: the device scan read the device list after stopping discovery, when BlueZ had already cleared the signal strength, so found devices could disappear from the result

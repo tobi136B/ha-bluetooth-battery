@@ -18,7 +18,7 @@ Details zur Einrichtung stehen in [bt_battery/DOCS.de.md](bt_battery/DOCS.de.md)
 
 ## Geräte finden
 
-* Das Add-on sucht beim Start und listet alle Geräte in der Nähe mit MAC Adresse im Protokoll und im Sensor "Found devices".
+* Das Add-on sucht beim Start. Jeder gefundene Kopfhörer, Lautsprecher oder jedes Eingabegerät erscheint in Home Assistant als eigenes Gerät mit dem Schalter **"Monitor battery"**. Einschalten, dann erscheint der Akku Sensor. Die Auswahl bleibt nach einem Neustart erhalten, der Knopf **"Search devices"** sucht jederzeit neu.
 * Mit `monitor_all_paired: true` wird jedes gekoppelte Gerät ohne MAC Eingabe überwacht.
 * Unter Windows listet [tools/find_bluetooth_devices.py](tools/find_bluetooth_devices.py) alle gekoppelten Geräte mit MAC Adresse und Akkustand (nur Standardbibliothek, Python 3.12 oder neuer):
 

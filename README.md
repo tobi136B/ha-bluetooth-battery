@@ -18,7 +18,7 @@ Setup details: [bt_battery/DOCS.md](bt_battery/DOCS.md).
 
 ## Finding your devices
 
-* The add-on scans on start and lists all nearby devices with MAC address in the log and in the sensor "Found devices".
+* The add-on scans on start. Every found headset, speaker or input device shows up in Home Assistant as its own device with a **"Monitor battery"** switch. Switch it on and the battery sensor appears. The selection survives restarts, and the **"Search devices"** button scans again at any time.
 * With `monitor_all_paired: true` every paired device is monitored without entering a MAC.
 * On Windows, [tools/find_bluetooth_devices.py](tools/find_bluetooth_devices.py) lists all paired devices with MAC address and battery level (standard library only, Python 3.12 or newer):
 

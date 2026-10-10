@@ -18,13 +18,16 @@ from dbus_fast import DBusError
 from .bluez import BATTERY_SERVICE_UUID, HFP_HF_UUID, BlueZ, close_fd, path_to_mac
 from .config import AppConfig, DeviceConfig
 from .hfp import BatteryReport, HfpAgSession
-from .mqtt_publisher import MqttPublisher
+from .mqtt_publisher import BASE_TOPIC, SCAN_COMMAND_TOPIC, MqttPublisher
+from .store import DeviceStore
 
 LOG = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT_SECONDS = 30
 # Kurze Pause nach der Akkumeldung, damit der Kopfhörer seinen Verbindungsaufbau abschließen kann
 DISCONNECT_DELAY_SECONDS = 2
+# Gerätetypen (BlueZ "Icon"), die in HA zur Auswahl angeboten werden
+OFFERED_TYPE_PREFIXES = ("audio-", "input-")
 
 
 class HfpConnection:
@@ -73,13 +76,23 @@ class HfpConnection:
 
 
 class BatteryService:
-    def __init__(self, config: AppConfig, bluez: BlueZ, publisher: MqttPublisher) -> None:
+    def __init__(
+        self, config: AppConfig, bluez: BlueZ, publisher: MqttPublisher, store: DeviceStore | None = None
+    ) -> None:
         self.config = config
         self.bluez = bluez
         self.publisher = publisher
+        self.store = store if store is not None else DeviceStore()
         self._connections: dict[str, HfpConnection] = {}
-        self._devices: dict[str, DeviceConfig] = {device.mac: device for device in config.devices}
+        # Geräte aus den Optionen werden immer überwacht, dazu die in HA eingeschalteten
+        for device in config.devices:
+            self.store.add(device.mac, device.name, monitored=True)
+        self.store.save()
+        self._devices: dict[str, DeviceConfig] = {}
+        self._sync_monitored()
         self._announced: set[str] = set()
+        self._wake = asyncio.Event()
+        self._scan_requested = False
         # False, wenn ein anderer Dienst die HFP Gateway Rolle belegt (siehe __main__)
         self.hfp_available = True
         self._tasks: set[asyncio.Task] = set()
@@ -216,6 +229,15 @@ class BatteryService:
             "random_address": state.get("AddressType") == "random",
         }
 
+    @staticmethod
+    def is_offered(entry: dict) -> bool:
+        """Geräte, für die in HA ein Schalter "Monitor battery" angelegt wird."""
+        return (
+            entry["paired"]
+            or entry["battery_method"] != "unknown"
+            or entry["type"].startswith(OFFERED_TYPE_PREFIXES)
+        )
+
     async def scan_and_report(self) -> None:
         LOG.info("Suche %d s nach Bluetooth Geräten (Geräte einschalten, ggf. Kopplungsmodus)", self.config.scan_seconds)
         found = [self.describe(state) for state in await self.bluez.scan(self.config.scan_seconds)]
@@ -238,9 +260,53 @@ class BatteryService:
                 entry["mac"], entry["name"][:30], entry["type"], "ja" if entry["paired"] else "nein", entry["battery_method"],
             )
         if not found:
-            LOG.info("Keine benannten Geräte gefunden. Kopfhörer erscheinen nur im Kopplungsmodus, dann das Add-on neu starten.")
-        LOG.info("Gewünschte Geräte mit MAC unter 'devices' eintragen (oder monitor_all_paired aktivieren)")
+            LOG.info("Keine benannten Geräte gefunden. Kopfhörer erscheinen nur im Kopplungsmodus.")
+        new_devices = [entry for entry in found if self.is_offered(entry) and self.store.remember(entry)]
+        self.store.save()
+        for entry in new_devices:
+            LOG.info("Neu in Home Assistant: %s (%s)", entry["name"] or entry["mac"], entry["mac"])
+        LOG.info("Zum Überwachen in Home Assistant beim Gerät den Schalter 'Monitor battery' einschalten")
         self.publisher.publish_scan_result(found)
+
+    # Auswahl in Home Assistant
+
+    def _device_config(self, mac: str) -> DeviceConfig:
+        entry = self.store.get(mac) or {}
+        return DeviceConfig(mac=mac, name=entry.get("name") or mac)
+
+    def _sync_monitored(self) -> None:
+        """Gleicht die abgefragten Geräte mit der gespeicherten Auswahl ab."""
+        wanted = {mac for mac, _ in self.store.monitored()}
+        for mac in list(self._devices):
+            if mac not in wanted:
+                del self._devices[mac]
+        for mac in wanted:
+            if mac not in self._devices:
+                self._devices[mac] = self._device_config(mac)
+
+    def handle_command(self, topic: str, payload: str) -> None:
+        """MQTT Befehl aus Home Assistant (in der Ereignisschleife aufrufen)."""
+        if topic == SCAN_COMMAND_TOPIC:
+            LOG.info("Suche aus Home Assistant angefordert")
+            self._scan_requested = True
+            self._wake.set()
+            return
+        parts = topic.split("/")
+        if len(parts) != 4 or parts[0] != BASE_TOPIC or parts[2:] != ["monitor", "set"]:
+            return
+        mac = self.store.mac_for_object_id(parts[1])
+        if mac is None:
+            return
+        monitored = payload.strip().upper() == "ON"
+        self.store.set_monitored(mac, monitored)
+        self.store.save()
+        self._sync_monitored()
+        device = self._device_config(mac)
+        LOG.info("%s: Überwachung %s", device.name, "eingeschaltet" if monitored else "ausgeschaltet")
+        self.publisher.publish_device(device, monitored)
+        if monitored:
+            # Sofort abfragen statt bis zum nächsten Intervall zu warten
+            self._wake.set()
 
     async def refresh_devices(self) -> None:
         """Ergänzt bei monitor_all_paired alle gekoppelten Geräte und meldet neue Geräte an HA."""
@@ -249,26 +315,38 @@ class BatteryService:
                 mac = state.get("Address", "").upper()
                 if state.get("Paired") and mac and mac not in self._devices:
                     name = state.get("Alias") or state.get("Name") or mac
-                    self._devices[mac] = DeviceConfig(mac=mac, name=name)
+                    self.store.add(mac, name, monitored=True)
                     LOG.info("Gekoppeltes Gerät übernommen: %s (%s)", name, mac)
-        for device in self._devices.values():
-            if device.mac not in self._announced:
-                self.publisher.publish_discovery(device)
-                self._announced.add(device.mac)
+            self.store.save()
+            self._sync_monitored()
+        for mac, entry in self.store.items():
+            if mac not in self._announced:
+                self.publisher.publish_device(self._device_config(mac), bool(entry.get("monitored")))
+                self._announced.add(mac)
+
+    async def _scan(self) -> None:
+        try:
+            await self.scan_and_report()
+        except DBusError as error:
+            LOG.warning("Gerätesuche fehlgeschlagen: %s", error)
 
     async def run(self) -> None:
+        self.publisher.publish_controls()
         if self.config.scan_on_start:
-            try:
-                await self.scan_and_report()
-            except DBusError as error:
-                LOG.warning("Gerätesuche fehlgeschlagen: %s", error)
+            await self._scan()
         while True:
+            # Vor dem Abfragen zurücksetzen, damit Befehle während der Abfrage nicht verloren gehen
+            self._wake.clear()
+            if self._scan_requested:
+                self._scan_requested = False
+                await self._scan()
             await self.refresh_devices()
             if not self._devices:
-                LOG.info("Noch keine Geräte konfiguriert, siehe Sensor 'Found devices' oder das Protokoll oben")
+                LOG.info("Noch kein Gerät ausgewählt: in Home Assistant beim Gerät 'Monitor battery' einschalten")
             for device in list(self._devices.values()):
                 try:
                     await self.poll_device(device)
                 except DBusError as error:
                     LOG.warning("%s: BlueZ Fehler: %s", device.name, error)
-            await asyncio.sleep(self.config.poll_interval_seconds)
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(self._wake.wait(), self.config.poll_interval_seconds)
