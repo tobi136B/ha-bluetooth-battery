@@ -3,8 +3,8 @@ configuration:
     name: Bluetooth adapter
     description: e.g. hci0 (built in) or hci1 (USB dongle).
   devices:
-    name: Devices
-    description: Bluetooth devices with MAC address and display name.
+    name: Devices (optional)
+    description: Usually leave empty. Choose devices in Home Assistant with the "Monitor battery" switch instead. Devices listed here are always monitored.
   poll_interval_minutes:
     name: Poll interval (minutes)
   hold_seconds:
